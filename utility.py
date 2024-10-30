@@ -138,7 +138,7 @@ context_size = 4 #A
 x = enc_sample[:context_size]
 y = enc_sample[1:context_size+1]
 print(f"x: {x}")
-print(f"y: {y}")
+print(f"y:      {y}")
 
 for i in range(1, context_size+1):
     context = enc_sample[:i]
@@ -148,38 +148,49 @@ for i in range(1, context_size+1):
 '''
 
 # A dataset for batched inputs and targets
-''
 import torch
 from torch.utils.data import Dataset, DataLoader
-
 class GPTDatasetV1(Dataset):
     def __init__(self, txt, tokenizer, max_length, stride):
         self.tokenizer = tokenizer
         self.input_ids = []
         self.target_ids = []
-
         token_ids = tokenizer.encode(txt) #A
-
         for i in range(0, len(token_ids) - max_length, stride): #B
             input_chunk = token_ids[i:i + max_length]
             target_chunk = token_ids[i + 1: i + max_length + 1]
             self.input_ids.append(torch.tensor(input_chunk))
             self.target_ids.append(torch.tensor(target_chunk))
-
-        def __len__(self): #C
-            return len(self.input_ids)  
-        
-        def __getitem__(self, idx): #D
-            return self.input_ids[idx], self.target_ids[idx]
-        
+    def __len__(self): #C
+        return len(self.input_ids)
+    def __getitem__(self, idx): #D
+        return self.input_ids[idx], self.target_ids[idx]
+    
 def create_dataloader_v1(txt, batch_size=4, max_length=256, stride=128, shuffle=True, drop_last=True):
     tokenizer = tiktoken.get_encoding("gpt2") #A
     dataset = GPTDatasetV1(txt, tokenizer, max_length, stride) #B
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last)
+    dataloader = DataLoader( dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last)
     return dataloader
 
-dataloader = create_dataloader_v1(raw_text, batch_size=1, max_length=4, stride=1, shuffle=False)
+with open("the-verdict.txt", "r", encoding="utf-8") as f:
+    raw_text = f.read()
+
+
+# dataloader to generate batches with input-with pairs
+# Data loaders with different strides and context sizes created by adjusting parameter values
+'''
+dataloader = create_dataloader_v1(raw_text, batch_size=2, max_length=8, stride=2, shuffle=False)
 data_iter = iter(dataloader) #A
 first_batch = next(data_iter)
 print(first_batch)
-''
+second_batch = next(data_iter)
+print(second_batch)
+'''
+
+# use the data loader to sample with a batch size greater than 1
+
+dataloader = create_dataloader_v1(raw_text, batch_size=8, max_length=4, stride=4, shuffle=False)
+data_iter = iter(dataloader)
+inputs, targets = next(data_iter)
+print("Inputs:\n", inputs)
+print("\nTargets:\n", targets)

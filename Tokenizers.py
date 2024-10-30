@@ -1,5 +1,6 @@
 import re
 
+# elementary tokenizer 
 class SimpleTokenizerV1:
     def __init__(self, vocab):
         self.str_to_int = vocab  # A
@@ -18,10 +19,12 @@ class SimpleTokenizerV1:
         text = re.sub(r'\s+([,.?!"()\'])', r'\1', text)  # E
         return text
     
+# added ability to identify unknown tokens in the encoding stage, replacing them with "<|unk|>"
 class SimpleTokenizerV2:
     def __init__(self, vocab):
         self.str_to_int = vocab
         self.int_to_str = { i:s for s,i in vocab.items()}
+
     def encode(self, text):
         preprocessed = re.split(r'([,.?_!"()\']|--|\s)', text)
         preprocessed = [item.strip() for item in preprocessed if item.strip()]
@@ -29,6 +32,7 @@ class SimpleTokenizerV2:
             else "<|unk|>" for item in preprocessed]
         ids = [self.str_to_int[s] for s in preprocessed]
         return ids
+    
     def decode(self, ids):
         text = " ".join([self.int_to_str[i] for i in ids])
         text = re.sub(r'\s+([,.?!"()\'])', r'\1', text) #B
