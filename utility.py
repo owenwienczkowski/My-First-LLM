@@ -86,7 +86,7 @@ print(ids)
 print(tokenizer.decode(ids))
 '''
 
-# list of all tokens, including two new tokens '<|endoftext|>' and <|unk|> which signifiy a separation between two unrelated texts, and an unknown token respectively
+'''# list of all tokens, including two new tokens '<|endoftext|>' and <|unk|> which signifiy a separation between two unrelated texts, and an unknown token respectively
 all_tokens = sorted(list(set(preprocessed)))
 all_tokens.extend(["<|endoftext|>", "<|unk|>"])
 vocab = {token:integer for integer,token in enumerate(all_tokens)}
@@ -104,18 +104,19 @@ text = " <|endoftext|> ".join((text1, text2))
 from Tokenizers import SimpleTokenizerV2
 tokenizer = SimpleTokenizerV2(vocab)
 
-'''
+
 # view the IDs of the tokens in the text
 print(tokenizer.encode(text))
 
 # print the tokens based on ID (including the <|unk|> specifically)
-print(tokenizer.decode(tokenizer.encode(text)))
+print(tokenizer.decode(tokenizer.encode(text)))''
 '''
 
 ### BEGIN BYTE PAIR ENCODING ###
 # pip install tiktoken
 import tiktoken
-
+'''
+import tiktoken
 tokenizer = tiktoken.get_encoding("gpt2")
 # text = "Hello, do you like tea? <|endoftext|> In the sunlit terraces of the palace."
 
@@ -131,7 +132,7 @@ enc_text = tokenizer.encode(raw_text)
 print(len(enc_text))
 
 enc_sample = enc_text[50:]
-
+# '''
 # demo input-target pairs
 '''
 context_size = 4 #A
@@ -188,9 +189,123 @@ print(second_batch)
 '''
 
 # use the data loader to sample with a batch size greater than 1
-
+'''
 dataloader = create_dataloader_v1(raw_text, batch_size=8, max_length=4, stride=4, shuffle=False)
 data_iter = iter(dataloader)
 inputs, targets = next(data_iter)
 print("Inputs:\n", inputs)
 print("\nTargets:\n", targets)
+'''
+# Creating token embeddings
+'''
+input_ids = torch.tensor([2, 3, 5, 1])
+vocab_size = 6
+output_dim = 3
+
+torch.manual_seed(123)
+embedding_layer = torch.nn.Embedding(vocab_size, output_dim)
+print(embedding_layer.weight)
+# print(embedding_layer(torch.tensor([3])))
+print(embedding_layer(input_ids))
+'''
+
+'''# Encoding word positions
+output_dim = 256
+vocab_size = 50257
+token_embedding_layer = torch.nn.Embedding(vocab_size, output_dim)
+
+max_length = 4
+dataloader = create_dataloader_v1(raw_text, batch_size=8, max_length=max_length, stride=max_length, shuffle=False)
+data_iter = iter(dataloader)
+inputs, targets = next(data_iter)
+print("Token IDs:\n", inputs)
+print("\nInputs shape:\n", inputs.shape)
+
+token_embeddings = token_embedding_layer(inputs)
+print("Token embeddings:\n", token_embeddings.shape)
+
+context_length = max_length
+pos_embedding_layer = torch.nn.Embedding(context_length, output_dim)
+pos_embeddings = pos_embedding_layer(torch.arange(context_length))
+print("Position embeddings:\n",pos_embeddings.shape)
+
+
+# Input embeddings = token embeddings + position embeddings
+input_embeddings = token_embeddings + pos_embeddings
+print("Input embeddings:\n",input_embeddings.shape)
+'''
+
+# embedded input sentence: 
+inputs = torch.tensor(
+[[0.43, 0.15, 0.89], # Your (x^1)
+[0.55, 0.87, 0.66], # journey (x^2)
+[0.57, 0.85, 0.64], # starts (x^3)
+[0.22, 0.58, 0.33], # with (x^4)
+[0.77, 0.25, 0.10], # one (x^5)
+[0.05, 0.80, 0.55]] # step (x^6)
+)
+
+
+# COMPUTE ATTENTION WEIGHTS FOR ONE CONTEXT VECTOR
+
+# calculate the intermediate attention scores between the query token and each input token
+# determined by computing the dot product of the query, x(2), with every other input token:
+query = inputs[1] #A
+attn_scores_2 = torch.empty(inputs.shape[0])
+for i, x_i in enumerate(inputs):
+    attn_scores_2[i] = torch.dot(x_i, query)
+print("Attention scores:", attn_scores_2)
+
+# normalize attention scores to obtain attention weights (that sum to 1)
+
+'''attn_weights_2_tmp = attn_scores_2 / attn_scores_2.sum() # more practical to instead use softmax function
+print("Attention weights:", attn_weights_2_tmp)
+print("Sum:", attn_weights_2_tmp.sum())'''
+
+'''# use naive softmax which is more realistic
+def softmax_naive(x):
+    return torch.exp(x) / torch.exp(x).sum(dim=0)
+
+attn_weights_2_naive = softmax_naive(attn_scores_2)
+print("Attention weights:", attn_weights_2_naive)
+print("Sum:", attn_weights_2_naive.sum())'''
+
+# use torch softmax for obtain attention weights
+'''attn_weights_2 = torch.softmax(attn_scores_2, dim=0)
+print("Attention weights:", attn_weights_2)
+print("Sum:", attn_weights_2.sum())
+
+query = inputs[1] # 2nd input token is the query
+context_vec_2 = torch.zeros(query.shape)
+for i,x_i in enumerate(inputs):
+    context_vec_2 += attn_weights_2[i]*x_i
+print(context_vec_2)'''
+
+# COMPUTE ATTENTION WEIGHTS FOR ALL CONTEXT VECTORS SIMULTANEOUSLY
+
+# compute dot products for all pairs of inputs
+attn_scores = torch.empty(6, 6)
+
+# multiply using additional for-loop
+'''for i, x_i in enumerate(inputs):
+    for j, x_j in enumerate(inputs):
+       attn_scores[i, j] = torch.dot(x_i, x_j)
+print(attn_scores)'''
+
+# multiply the input tensor (matrix) by its transpose to achieve same attention score results more quickly
+attn_scores = inputs @ inputs.T
+print(attn_scores)
+
+# normalize each row 
+attn_weights = torch.softmax(attn_scores, dim=1)
+print(attn_weights)
+
+# verify rows sum to 1
+'''row_2_sum = sum([0.1385, 0.2379, 0.2333, 0.1240, 0.1082, 0.1581])
+print("Row 2 sum:", row_2_sum)
+print("All row sums:", attn_weights.sum(dim=1))'''
+
+# compute all context vectors via matrix multiplication
+all_context_vecs = attn_weights @ inputs
+print(all_context_vecs)
+
