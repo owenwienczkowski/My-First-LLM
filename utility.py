@@ -294,11 +294,11 @@ print(attn_scores)'''
 
 # multiply the input tensor (matrix) by its transpose to achieve same attention score results more quickly
 attn_scores = inputs @ inputs.T
-print(attn_scores)
+# print(attn_scores)
 
 # normalize each row 
 attn_weights = torch.softmax(attn_scores, dim=1)
-print(attn_weights)
+# print(attn_weights)
 
 # verify rows sum to 1
 '''row_2_sum = sum([0.1385, 0.2379, 0.2333, 0.1240, 0.1082, 0.1581])
@@ -307,5 +307,42 @@ print("All row sums:", attn_weights.sum(dim=1))'''
 
 # compute all context vectors via matrix multiplication
 all_context_vecs = attn_weights @ inputs
-print(all_context_vecs)
+# print(all_context_vecs)
 
+# Implementing self-attention with trainable weights
+x_2 = inputs[1] #A
+d_in = inputs.shape[1] #B
+d_out = 2 #C
+
+# requires_grad=False to reduce clutter
+#  if we were to use the weight matrices for model training, we would set requires_grad=True to update these matrices during model training
+torch.manual_seed(123)
+W_query = torch.nn.Parameter(torch.rand(d_in, d_out), requires_grad=False)
+W_key = torch.nn.Parameter(torch.rand(d_in, d_out), requires_grad=False)
+W_value = torch.nn.Parameter(torch.rand(d_in, d_out), requires_grad=False)
+
+query_2 = x_2 @ W_query
+key_2 = x_2 @ W_key
+value_2 = x_2 @ W_value
+print(query_2)
+print(key_2)
+print(value_2)
+
+keys = inputs @ W_key
+values = inputs @ W_value
+print("keys.shape:", keys.shape)
+print("values.shape:", values.shape)
+
+keys_2 = keys[1] #A
+attn_score_22 = query_2.dot(keys_2)
+print(attn_score_22)
+
+attn_scores_2 = query_2 @ keys.T # All attention scores for given query
+print(attn_scores_2)
+
+d_k = keys.shape[-1]
+attn_weights_2 = torch.softmax(attn_scores_2 / d_k**0.5, dim=-1)
+print(attn_weights_2)
+
+context_vec_2 = attn_weights_2 @ values
+print(context_vec_2)
