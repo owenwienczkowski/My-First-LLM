@@ -234,8 +234,8 @@ print("Position embeddings:\n",pos_embeddings.shape)
 input_embeddings = token_embeddings + pos_embeddings
 print("Input embeddings:\n",input_embeddings.shape)
 '''
-
-# embedded input sentence: 
+# begin basic self-attention mechanism
+import torch
 inputs = torch.tensor(
 [[0.43, 0.15, 0.89], # Your (x^1)
 [0.55, 0.87, 0.66], # journey (x^2)
@@ -244,78 +244,70 @@ inputs = torch.tensor(
 [0.77, 0.25, 0.10], # one (x^5)
 [0.05, 0.80, 0.55]] # step (x^6)
 )
-
-
-# COMPUTE ATTENTION WEIGHTS FOR ONE CONTEXT VECTOR
-
-# calculate the intermediate attention scores between the query token and each input token
-# determined by computing the dot product of the query, x(2), with every other input token:
+'''
+# example of determining attention for second word (inputs[1])
 query = inputs[1] #A
+# calculate attention scores using dot product
+# greater dot product infers greater alignment/similarity between elements (how muuch two elements "attend" to one another0). 
 attn_scores_2 = torch.empty(inputs.shape[0])
 for i, x_i in enumerate(inputs):
     attn_scores_2[i] = torch.dot(x_i, query)
-print("Attention scores:", attn_scores_2)
+# print(attn_scores_2)
 
-# normalize attention scores to obtain attention weights (that sum to 1)
-
-'''attn_weights_2_tmp = attn_scores_2 / attn_scores_2.sum() # more practical to instead use softmax function
+# normalize the attention scores to get attention weights
+# for a basic way to do this, divide by sum of each attention score by the summ of all attention scores
+attn_weights_2_tmp = attn_scores_2 / attn_scores_2.sum()
 print("Attention weights:", attn_weights_2_tmp)
-print("Sum:", attn_weights_2_tmp.sum())'''
+# print("Sum:", attn_weights_2_tmp.sum())
 
-'''# use naive softmax which is more realistic
+# a better method of normaization is the softmax function
+# self-defined
 def softmax_naive(x):
     return torch.exp(x) / torch.exp(x).sum(dim=0)
-
 attn_weights_2_naive = softmax_naive(attn_scores_2)
 print("Attention weights:", attn_weights_2_naive)
-print("Sum:", attn_weights_2_naive.sum())'''
+print("Sum:", attn_weights_2_naive.sum())
 
-# use torch softmax for obtain attention weights
-'''attn_weights_2 = torch.softmax(attn_scores_2, dim=0)
-print("Attention weights:", attn_weights_2)
-print("Sum:", attn_weights_2.sum())
+# pytorch defined
+attn_weights_2 = torch.softmax(attn_scores_2, dim=0)
+# print("Attention weights:", attn_weights_2)
+# print("Sum:", attn_weights_2.sum())
 
+# calculate context vector by multiplying embedded input tokens with corresponding attention weights and then summing the vectors
+# example still for second word
 query = inputs[1] # 2nd input token is the query
 context_vec_2 = torch.zeros(query.shape)
 for i,x_i in enumerate(inputs):
     context_vec_2 += attn_weights_2[i]*x_i
-print(context_vec_2)'''
+# print(context_vec_2)
+'''
+# begin improved self-attention mechanism
 
-# COMPUTE ATTENTION WEIGHTS FOR ALL CONTEXT VECTORS SIMULTANEOUSLY
-
-# compute dot products for all pairs of inputs
+# compute the dot products for all pairs of inputs
+'''
 attn_scores = torch.empty(6, 6)
-
-# multiply using additional for-loop
-'''for i, x_i in enumerate(inputs):
+for i, x_i in enumerate(inputs):
     for j, x_j in enumerate(inputs):
-       attn_scores[i, j] = torch.dot(x_i, x_j)
-print(attn_scores)'''
+        attn_scores[i, j] = torch.dot(x_i, x_j)
+print(attn_scores) # unnormalized attention scores
 
-# multiply the input tensor (matrix) by its transpose to achieve same attention score results more quickly
-attn_scores = inputs @ inputs.T
-# print(attn_scores)
-
-# normalize each row 
+# normalize the attention scores for each input (row) to acquire attention weights
 attn_weights = torch.softmax(attn_scores, dim=1)
-# print(attn_weights)
+print(attn_weights)
 
-# verify rows sum to 1
-'''row_2_sum = sum([0.1385, 0.2379, 0.2333, 0.1240, 0.1082, 0.1581])
-print("Row 2 sum:", row_2_sum)
-print("All row sums:", attn_weights.sum(dim=1))'''
+# print("All row sums:", attn_weights.sum(dim=1))
 
-# compute all context vectors via matrix multiplication
+# using attention weights, compute context vectors through matrix multiplicaiton
 all_context_vecs = attn_weights @ inputs
-# print(all_context_vecs)
+print(all_context_vecs)
+'''
 
-# Implementing self-attention with trainable weights
+# add trainable weights for LLM to learn from, "scaled dot-product attention"
+
 x_2 = inputs[1] #A
 d_in = inputs.shape[1] #B
 d_out = 2 #C
 
-# requires_grad=False to reduce clutter
-#  if we were to use the weight matrices for model training, we would set requires_grad=True to update these matrices during model training
 torch.manual_seed(123)
 W_query = torch.nn.Parameter(torch.rand(d_in, d_out), requires_grad=False)
 W_key = torch.nn.Parameter(torch.rand(d_in, d_out), requires_grad=False)
@@ -325,8 +317,6 @@ query_2 = x_2 @ W_query
 key_2 = x_2 @ W_key
 value_2 = x_2 @ W_value
 print(query_2)
-print(key_2)
-print(value_2)
 
 keys = inputs @ W_key
 values = inputs @ W_value
@@ -334,15 +324,17 @@ print("keys.shape:", keys.shape)
 print("values.shape:", values.shape)
 
 keys_2 = keys[1] #A
-attn_score_22 = query_2.dot(keys_2)
+attn_score_22 = query_2 @ keys_2
 print(attn_score_22)
 
 attn_scores_2 = query_2 @ keys.T # All attention scores for given query
 print(attn_scores_2)
 
+# normalize the scores via softmax function
 d_k = keys.shape[-1]
-attn_weights_2 = torch.softmax(attn_scores_2 / d_k**0.5, dim=-1)
+attn_weights_2 = torch.softmax(attn_scores_2 / d_k**0.5, dim=-1) # divide by square root of the embedding dimension of the keys
 print(attn_weights_2)
 
+# compute the context vectors
 context_vec_2 = attn_weights_2 @ values
 print(context_vec_2)
