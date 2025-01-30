@@ -316,25 +316,97 @@ W_value = torch.nn.Parameter(torch.rand(d_in, d_out), requires_grad=False)
 query_2 = x_2 @ W_query
 key_2 = x_2 @ W_key
 value_2 = x_2 @ W_value
-print(query_2)
+# print(query_2)
 
 keys = inputs @ W_key
 values = inputs @ W_value
-print("keys.shape:", keys.shape)
-print("values.shape:", values.shape)
+# print("keys.shape:", keys.shape)
+# print("values.shape:", values.shape)
 
 keys_2 = keys[1] #A
 attn_score_22 = query_2 @ keys_2
-print(attn_score_22)
+# print(attn_score_22)
 
 attn_scores_2 = query_2 @ keys.T # All attention scores for given query
-print(attn_scores_2)
+# print(attn_scores_2)
 
 # normalize the scores via softmax function
 d_k = keys.shape[-1]
 attn_weights_2 = torch.softmax(attn_scores_2 / d_k**0.5, dim=-1) # divide by square root of the embedding dimension of the keys
-print(attn_weights_2)
+# print(attn_weights_2)
 
 # compute the context vectors
 context_vec_2 = attn_weights_2 @ values
-print(context_vec_2)
+# print(context_vec_2)
+
+
+
+# A compact self-attention class
+
+import torch.nn as nn
+class SelfAttention_v1(nn.Module):
+    def __init__(self, d_in, d_out):
+        super().__init__()
+        self.d_out = d_out
+        self.W_query = nn.Parameter(torch.rand(d_in, d_out))
+        self.W_key = nn.Parameter(torch.rand(d_in, d_out))
+        self.W_value = nn.Parameter(torch.rand(d_in, d_out))
+
+    # compute and normalize attention scores
+    def forward(self, x):
+        keys = x @ self.W_key
+        queries = x @ self.W_query
+        values = x @ self.W_value
+        attn_scores = queries @ keys.T # omega
+        attn_weights = torch.softmax(attn_scores / keys.shape[-1]**0.5, dim=-1)
+        context_vec = attn_weights @ values
+        return context_vec
+
+torch.manual_seed(123)
+sa_v1 = SelfAttention_v1(d_in, d_out)
+print(sa_v1(inputs))
+
+# second class using nn.Module for nn.Linear layers and optimized weight initialization scheme
+class SelfAttention_v2(nn.Module):
+    def __init__(self, d_in, d_out, qkv_bias=False):
+        super().__init__()
+        self.d_out = d_out
+        self.W_query = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_key = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)
+    
+    def forward(self, x):
+        keys = self.W_key(x)
+        queries = self.W_query(x)
+        values = self.W_value(x)
+        attn_scores = queries @ keys.T
+        attn_weights = torch.softmax(attn_scores / keys.shape[-1]**0.5, dim=-1)
+        context_vec = attn_weights @ values
+        return context_vec
+
+torch.manual_seed(789)
+sa_v2 = SelfAttention_v2(d_in, d_out)
+print(sa_v2(inputs))
+
+# The task is to correctly assign the weights from an instance of
+# SelfAttention_v2 to an instance of SelfAttention_v1. To do this, you need
+# to understand the relationship between the weights in both versions. (Hint:
+# nn.Linear stores the weight matrix in a transposed form.) After the
+# assignment, you should observe that both instances produce the same outputs.
+
+# assign each weight of V1 to the transpose of the weights of V2
+sa_v1.W_key.data = sa_v2.W_key.weight.T.clone()
+sa_v1.W_query.data = sa_v2.W_query.weight.T.clone()
+sa_v1.W_value.data = sa_v2.W_value.weight.T.clone()
+
+# print shape of v2, v2 transpose, and (new) v1
+print("sa_v2.W_key.weight shape:", sa_v2.W_key.weight.shape)
+print("Transposed shape:", sa_v2.W_key.weight.T.shape)
+print("sa_v1.W_key.data shape (after assignment):", sa_v1.W_key.data.shape)
+
+output_v1 = sa_v1(inputs)
+output_v2 = sa_v2(inputs)
+
+# The function torch.allclose(tensor1, tensor2, atol=some_value) checks if all elements in tensor1 and tensor2 are numerically close within a specified tolerance.
+print("Weight transfer successful:", torch.allclose(sa_v1.W_key, sa_v2.W_key.weight.T, atol=1e-6))
+print("Outputs match:", torch.allclose(output_v1, output_v2, atol=1e-6))
