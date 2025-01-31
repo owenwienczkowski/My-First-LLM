@@ -472,7 +472,7 @@ class CausalAttention(nn.Module):
         self.dropout = nn.Dropout(dropout) #A
         self.register_buffer('mask',torch.triu(torch.ones(context_length, context_length),diagonal=1)) #B
     def forward(self, x):
-        b, num_tokens, d_in = x.shape #C
+        b, num_tokens, d_in = x.shape #C b=number of batches, num_tokens=Sequence length , d_in=Feature dimension per token (input embedding size)
 # New batch dimension b
         keys = self.W_key(x)
         queries = self.W_query(x)
@@ -489,4 +489,40 @@ context_length = batch.shape[1]
 ca = CausalAttention(d_in, d_out, context_length, 0.0)
 context_vecs = ca(batch)
 print("context_vecs.shape:", context_vecs.shape)
-print(ca.d_out)
+
+# implementing multi-head attention
+
+# trivial method: stacking multiple single head attention modules
+class MultiHeadAttentionWrapper(nn.Module):
+    def __init__(self, d_in, d_out, context_length, dropout, num_heads, qkv_bias=False):
+        super().__init__()
+        self.heads = nn.ModuleList([CausalAttention(d_in, d_out, context_length, dropout, qkv_bias) for _ in range(num_heads)])
+    def forward(self, x):
+        return torch.cat([head(x) for head in self.heads], dim=-1)
+
+# example of use of multi-head attention model
+torch.manual_seed(123)
+context_length = batch.shape[1] # This is the number of tokens
+d_in, d_out, num_heads = 3, 2, 2
+mha = MultiHeadAttentionWrapper(d_in, d_out, context_length, 0.0, num_heads)
+context_vecs = mha(batch)
+print(context_vecs)
+print("context_vecs.shape:", context_vecs.shape)
+
+# Exercise 3.2:
+# Change the input arguments for the MultiHeadAttentionWrapper(...,
+# num_heads=2) call such that the output context vectors are 2-dimensional
+# instead of 4-dimensional while keeping the setting num_heads=2. Hint: You
+# don't have to modify the class implementation; you just have to change one of
+# the other input arguments.
+'''
+torch.manual_seed(123)
+context_length = batch.shape[1] # This is the number of tokens
+d_in, d_out, num_heads = 3, 1, 2
+mha = MultiHeadAttentionWrapper(d_in, d_out, context_length, 0.0, num_heads)
+context_vecs = mha(batch)
+print(context_vecs)
+print("context_vecs.shape:", context_vecs.shape)
+'''
+
+# computing the outputs for all attention heads simultaneously via matrix multiplication
