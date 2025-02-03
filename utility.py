@@ -386,7 +386,7 @@ class SelfAttention_v2(nn.Module):
 
 torch.manual_seed(789)
 sa_v2 = SelfAttention_v2(d_in, d_out)
-print(sa_v2(inputs))
+# print(sa_v2(inputs))
 
 '''
 # The task is to correctly assign the weights from an instance of
@@ -420,21 +420,21 @@ queries = sa_v2.W_query(inputs) #A
 keys = sa_v2.W_key(inputs)
 attn_scores = queries @ keys.T
 attn_weights = torch.softmax(attn_scores / keys.shape[-1]**0.5, dim=1)
-print(attn_weights)
+# print(attn_weights)
 
 # create a mask matrix to hide future values
 context_length = attn_scores.shape[0]
 mask_simple = torch.tril(torch.ones(context_length, context_length))
-print(mask_simple)
+# print(mask_simple)
 
 # multiply the current weights by the mask to apply future value hiding
 masked_simple = attn_weights*mask_simple
-print(masked_simple)
+# print(masked_simple)
 
 # renormalize the attention weights
 row_sums = masked_simple.sum(dim=1, keepdim=True)
 masked_simple_norm = masked_simple / row_sums
-print(masked_simple_norm)
+# print(masked_simple_norm)
 
 # more efficient mask: initialize scores, apply a mask, then normalize
 
@@ -442,11 +442,11 @@ print(masked_simple_norm)
 mask = torch.triu(torch.ones(context_length, context_length), diagonal=1)
 # convert the mask to booolean values (1: True, 0: False). Convert false values to -inf
 masked = attn_scores.masked_fill(mask.bool(), -torch.inf)
-print(masked)
+# print(masked)
 
 # normalize the attention scores to get the attention weights
 attn_weights = torch.softmax(masked / keys.shape[-1]**0.5, dim=1)
-print(attn_weights)
+# print(attn_weights)
 
 # check to see if values are consistent
 # print(masked_simple_norm)
@@ -455,7 +455,7 @@ print(attn_weights)
 # application of dropout after implementation of attetnion weights
 dropout = torch.nn.Dropout(0.2)
 torch.manual_seed(123)
-print(dropout(attn_weights))
+# print(dropout(attn_weights))
 
 # duplicate text to simulate batch input
 batch = torch.stack((inputs, inputs), dim=0) # two input texts with 6 tokens each. Each token is a 3D embedding vector
@@ -488,7 +488,7 @@ torch.manual_seed(123)
 context_length = batch.shape[1]
 ca = CausalAttention(d_in, d_out, context_length, 0.0)
 context_vecs = ca(batch)
-print("context_vecs.shape:", context_vecs.shape)
+# print("context_vecs.shape:", context_vecs.shape)
 
 # implementing multi-head attention
 
@@ -506,8 +506,8 @@ context_length = batch.shape[1] # This is the number of tokens
 d_in, d_out, num_heads = 3, 2, 2
 mha = MultiHeadAttentionWrapper(d_in, d_out, context_length, 0.0, num_heads)
 context_vecs = mha(batch)
-print(context_vecs)
-print("context_vecs.shape:", context_vecs.shape)
+# print(context_vecs)
+# print("context_vecs.shape:", context_vecs.shape)
 
 # Exercise 3.2:
 # Change the input arguments for the MultiHeadAttentionWrapper(...,
@@ -526,3 +526,71 @@ print("context_vecs.shape:", context_vecs.shape)
 '''
 
 # computing the outputs for all attention heads simultaneously via matrix multiplication
+class MultiHeadAttention(nn.Module):
+    def __init__(self, d_in, d_out, context_length, dropout, num_heads, qkv_bias=False):
+        super().__init__()
+        assert d_out % num_heads == 0, "d_out must be divisible by num_heads"
+        self.d_out = d_out
+        self.num_heads = num_heads
+        self.head_dim = d_out // num_heads #A
+        self.W_query = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_key = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.out_proj = nn.Linear(d_out, d_out) #B
+        self.dropout = nn.Dropout(dropout)
+        self.register_buffer('mask', torch.triu(torch.ones(context_length, context_length), diagonal=1))
+    def forward(self, x):
+        b, num_tokens, d_in = x.shape
+        keys = self.W_key(x) #C
+        queries = self.W_query(x) #C
+        values = self.W_value(x) #C
+        keys = keys.view(b, num_tokens, self.num_heads, self.head_dim) #D
+        values = values.view(b, num_tokens, self.num_heads, self.head_dim) 
+        queries = queries.view(b, num_tokens, self.num_heads, self.head_dim)
+        keys = keys.transpose(1, 2) #E
+        queries = queries.transpose(1, 2) #E
+        values = values.transpose(1, 2) #E
+        attn_scores = queries @ keys.transpose(2, 3) #F
+        mask_bool = self.mask.bool()[:num_tokens, :num_tokens] #G
+        attn_scores.masked_fill_(mask_bool, -torch.inf) #H
+        attn_weights = torch.softmax(
+        attn_scores / keys.shape[-1]**0.5, dim=-1)
+        attn_weights = self.dropout(attn_weights)
+        context_vec = (attn_weights @ values).transpose(1, 2) #I
+        #J
+        context_vec = context_vec.contiguous().view(b, num_tokens, self.d_out)
+        context_vec = self.out_proj(context_vec) #K
+        return context_vec 
+    
+a = torch.tensor([[[[0.2745, 0.6584, 0.2775, 0.8573], #A
+[0.8993, 0.0390, 0.9268, 0.7388],
+[0.7179, 0.7058, 0.9156, 0.4340]],
+[[0.0772, 0.3565, 0.1479, 0.5331],
+[0.4066, 0.2318, 0.4545, 0.9737],
+[0.4606, 0.5159, 0.4220, 0.5786]]]])
+
+# print(a @ a.transpose(2, 3))
+
+torch.manual_seed(123)
+batch_size, context_length, d_in = batch.shape
+d_out = 2
+mha = MultiHeadAttention(d_in, d_out, context_length, 0.0, num_heads=2)
+context_vecs = mha(batch)
+print(context_vecs)
+print("context_vecs.shape:", context_vecs.shape)
+
+'''
+# Using the MultiHeadAttention class, initialize a multi-head attention
+# module that has the same number of attention heads as the smallest GPT-2
+# model (12 attention heads). Also ensure that you use the respective input and
+# output embedding sizes similar to GPT-2 (768 dimensions). Note that the
+# smallest GPT-2 model supports a context length of 1024 tokens.
+d_in_challenge, d_out_challenge, context_length_challenge = 768, 768, 1024
+mha_challenge = MultiHeadAttention(d_in_challenge, d_out_challenge, context_length_challenge, 0.0, 12)
+
+batch_challenge = torch.rand(2, context_length_challenge, d_in_challenge)
+context_vecs_challenge = mha_challenge(batch_challenge)
+print(context_vecs_challenge)
+print("context_vecs_challenge.shape:", context_vecs_challenge.shape)
+'''
+
