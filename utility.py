@@ -780,7 +780,8 @@ def print_gradients(model, x):
     for name, param in model.named_parameters():
         if 'weight' in name:
             # Print the mean absolute gradient of the weights
-            print(f"{name} has gradient mean of {param.grad.abs().mean().item()}")
+            # print(f"{name} has gradient mean of {param.grad.abs().mean().item()}")
+            pass
 
 print_gradients(model_without_shortcut, sample_input)
 
@@ -789,3 +790,41 @@ model_with_shortcut = ExampleDeepNeuralNetwork(
 layer_sizes, use_shortcut=True)
 print_gradients(model_with_shortcut, sample_input)
 
+# Connecting attention and linear layers in a transformer block
+
+# Transformer block component: 
+class TransformerBlock(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.att = MultiHeadAttention(
+        d_in=cfg["emb_dim"],
+        d_out=cfg["emb_dim"],
+        context_length=cfg["context_length"],
+        num_heads=cfg["n_heads"],
+        dropout=cfg["drop_rate"],
+        qkv_bias=cfg["qkv_bias"])
+        # layers normalized then dropout applied
+        self.ff = FeedForward(cfg)
+        self.norm1 = LayerNorm(cfg["emb_dim"])
+        self.norm2 = LayerNorm(cfg["emb_dim"])
+        self.drop_resid = nn.Dropout(cfg["drop_rate"])
+    def forward(self, x):
+        #A
+        shortcut = x
+        x = self.norm1(x)
+        x = self.att(x)
+        x = self.drop_resid(x)
+        x = x + shortcut # Add the original input back
+        shortcut = x #B
+        x = self.norm2(x)
+        x = self.ff(x)
+        x = self.drop_resid(x)
+        x = x + shortcut #C
+        return x
+    
+torch.manual_seed(123)
+x = torch.rand(2, 4, 768) #A
+block = TransformerBlock(GPT_CONFIG_124M)
+output = block(x)
+print("Input shape:", x.shape)
+print("Output shape:", output.shape)
