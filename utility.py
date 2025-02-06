@@ -826,5 +826,135 @@ torch.manual_seed(123)
 x = torch.rand(2, 4, 768) #A
 block = TransformerBlock(GPT_CONFIG_124M)
 output = block(x)
-print("Input shape:", x.shape)
-print("Output shape:", output.shape)
+# print("Input shape:", x.shape)
+# print("Output shape:", output.shape)
+
+# Coding the GPT model
+class GPTModel(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.tok_emb = nn.Embedding(cfg["vocab_size"], cfg["emb_dim"])
+        self.pos_emb = nn.Embedding(cfg["context_length"], cfg["emb_dim"])
+        self.drop_emb = nn.Dropout(cfg["drop_rate"])
+        self.trf_blocks = nn.Sequential(
+        *[TransformerBlock(cfg) for _ in range(cfg["n_layers"])])
+        self.final_norm = LayerNorm(cfg["emb_dim"])
+        self.out_head = nn.Linear(
+        cfg["emb_dim"], cfg["vocab_size"], bias=False)
+    def forward(self, in_idx):
+        batch_size, seq_len = in_idx.shape
+        tok_embeds = self.tok_emb(in_idx)
+        #A
+        pos_embeds = self.pos_emb(torch.arange(seq_len, device=in_idx.device))
+        x = tok_embeds + pos_embeds
+        x = self.drop_emb(x)
+        x = self.trf_blocks(x)
+        x = self.final_norm(x)
+        logits = self.out_head(x)
+        return logits
+
+torch.manual_seed(123)
+model = GPTModel(GPT_CONFIG_124M)
+out = model(batch)
+# print("Input batch:\n", batch)
+# print("\nOutput shape:", out.shape)
+# print(out)
+
+total_params = sum(p.numel() for p in model.parameters())
+# print(f"Total number of parameters: {total_params:,}")
+
+# print("Token embedding layer shape:", model.tok_emb.weight.shape)
+# print("Output layer shape:", model.out_head.weight.shape)
+
+total_params_gpt2 = total_params - sum(p.numel() for p in model.out_head.parameters())
+# print(f"Number of trainable parameters considering weight tying: {total_params_gpt2:,}")
+
+# compute the memory requirements of the 163 million parameters 
+total_size_bytes = total_params * 4 #A
+total_size_mb = total_size_bytes / (1024 * 1024) #B
+print(f"Total size of the model: {total_size_mb:.2f} MB")
+
+'''
+# Initializing larger GPT models
+
+# Without making any code modifications besides
+# updating the configuration file, use the GPTModel class to implement GPT-2
+# medium (using 1024-dimensional embeddings, 24 transformer blocks, 16
+# multi-head attention heads), GPT-2 large (1280-dimensional embeddings, 36
+# transformer blocks, 20 multi-head attention heads), and GPT-2 XL (1600-
+# dimensional embeddings, 48 transformer blocks, 25 multi-head attention
+# heads). As a bonus, calculate the total number of parameters in each GPT model.
+
+# Specify the configuration of a medium GPT-2 model
+GPT_CONFIG_MED = {
+"vocab_size": 50257, # Vocabulary size
+"context_length": 1024, # Context length
+"emb_dim": 1024, # Embedding dimension
+"n_heads": 16, # Number of attention heads
+"n_layers": 24, # Number of layers
+"drop_rate": 0.1, # Dropout rate
+"qkv_bias": False # Query-Key-Value bias
+}
+
+# Specify the configuration of a large GPT-2 model
+GPT_CONFIG_LARGE = {
+"vocab_size": 50257, # Vocabulary size
+"context_length": 1024, # Context length
+"emb_dim": 1280, # Embedding dimension
+"n_heads": 20, # Number of attention heads
+"n_layers": 36, # Number of layers
+"drop_rate": 0.1, # Dropout rate
+"qkv_bias": False # Query-Key-Value bias
+}
+
+# Specify the configuration of an XL GPT-2 model
+GPT_CONFIG_XL = {
+"vocab_size": 50257, # Vocabulary size
+"context_length": 1024, # Context length
+"emb_dim": 1600, # Embedding dimension
+"n_heads": 25, # Number of attention heads
+"n_layers": 48, # Number of layers
+"drop_rate": 0.1, # Dropout rate
+"qkv_bias": False # Query-Key-Value bias
+}
+
+med_model = GPTModel(GPT_CONFIG_MED)
+large_model = GPTModel(GPT_CONFIG_LARGE)
+xl_model = GPTModel(GPT_CONFIG_XL)
+
+# medium model params
+total_params_med = sum(p.numel() for p in med_model.parameters())
+print(f"Total number of parameters in medium: {total_params_med:,}")
+
+total_params_gpt2_med = total_params_med - sum(p.numel() for p in med_model.out_head.parameters())
+print(f"Number of trainable parameters considering weight tying in medium model: {total_params_gpt2_med:,}")
+
+# compute the memory requirements of the 406,212,608 parameters 
+total_size_bytes_med = total_params_med * 4 #A
+total_size_mb_med = total_size_bytes_med / (1024 * 1024) #B
+print(f"Total size of the medium model: {total_size_mb_med:.2f} MB")
+
+# large model params
+total_params_large = sum(p.numel() for p in large_model.parameters())
+print(f"Total number of parameters in large: {total_params_large:,}")
+
+total_params_gpt2_large = total_params_large - sum(p.numel() for p in large_model.out_head.parameters())
+print(f"Number of trainable parameters considering weight tying in large model: {total_params_gpt2_large:,}")
+
+# compute the memory requirements of the 773,891,840 parameters 
+total_size_bytes_large = total_params_large * 4 #A
+total_size_mb_large = total_size_bytes_large / (1024 * 1024) #B
+print(f"Total size of the large model: {total_size_mb_large:.2f} MB")
+
+# xl model params
+total_params_xl = sum(p.numel() for p in xl_model.parameters())
+print(f"Total number of parameters in xl: {total_params_xl:,}")
+
+total_params_gpt2_xl = total_params_xl - sum(p.numel() for p in xl_model.out_head.parameters())
+print(f"Number of trainable parameters considering weight tying in xl model: {total_params_gpt2_xl:,}")
+
+# compute the memory requirements of the 1,557,380,800 parameters 
+total_size_bytes_xl = total_params_xl * 4 #A
+total_size_mb_xl = total_size_bytes_xl / (1024 * 1024) #B
+print(f"Total size of the xl model: {total_size_mb_xl:.2f} MB")
+'''
