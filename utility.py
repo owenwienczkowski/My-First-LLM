@@ -675,7 +675,7 @@ var = out.var(dim=-1, keepdim=True)
 out_norm = (out - mean) / torch.sqrt(var)
 mean = out_norm.mean(dim=-1, keepdim=True)
 var = out_norm.var(dim=-1, keepdim=True)
-print("Normalized layer outputs:\n", out_norm)
+# print("Normalized layer outputs:\n", out_norm)
 torch.set_printoptions(sci_mode=False)
 # print("Mean:\n", mean)
 # print("Variance:\n", var)
@@ -697,8 +697,41 @@ ln = LayerNorm(emb_dim=5)
 out_ln = ln(batch_example)
 mean = out_ln.mean(dim=-1, keepdim=True)
 var = out_ln.var(dim=-1, unbiased=False, keepdim=True)
-print("Mean:\n", mean)
-print("Variance:\n", var)
-print(ln)
-ln.forward(10)
-print(ln)
+# print("Mean:\n", mean)
+# print("Variance:\n", var)
+
+# Implementing a feed forward network with GELU activations
+# Implementation of the GELU activation function:
+class GELU(nn.Module):
+    def __init__(self):
+        super().__init__()
+    def forward(self, x):
+        return 0.5 * x * (1 + torch.tanh(torch.sqrt(torch.tensor(2.0 / torch.pi)) * (x + 0.044715 * torch.pow(x, 3))))
+
+# compare GELU vs ReLU
+import matplotlib.pyplot as plt
+# gelu, relu = GELU(), nn.ReLU()
+# x = torch.linspace(-3, 3, 100) #A
+# y_gelu, y_relu = gelu(x), relu(x)
+# plt.figure(figsize=(8, 3))
+# for i, (y, label) in enumerate(zip([y_gelu, y_relu], ["GELU", "ReLU"]), 1):
+#     plt.subplot(1, 2, i)
+#     plt.plot(x, y)
+#     plt.title(f"{label} activation function")
+#     plt.xlabel("x")
+#     plt.ylabel(f"{label}(x)")
+#     plt.grid(True)
+# plt.tight_layout()
+# plt.show()
+
+class FeedForward(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.layers = nn.Sequential(nn.Linear(cfg["emb_dim"], 4 * cfg["emb_dim"]), GELU(), nn.Linear(4 * cfg["emb_dim"], cfg["emb_dim"]),)
+    def forward(self, x):
+        return self.layers(x)
+    
+ffn = FeedForward(GPT_CONFIG_124M)
+x = torch.rand(2, 3, 768) #A
+out = ffn(x)
+print(out.shape)
