@@ -603,7 +603,9 @@ GPT_CONFIG_124M = {
 "emb_dim": 768, # Embedding dimension
 "n_heads": 12, # Number of attention heads
 "n_layers": 12, # Number of layers
-"drop_rate": 0.1, # Dropout rate
+"emb_drop_rate": 0.1, # Embedding dropout rate
+"short_drop_rate": 0.15, # Shortcut dropout rate
+"multi_drop_rate": 0.175, # Multi-Head attention dropout rate
 "qkv_bias": False # Query-Key-Value bias
 }
 
@@ -614,7 +616,7 @@ class DummyGPTModel(nn.Module):
         super().__init__()
         self.tok_emb = nn.Embedding(cfg["vocab_size"], cfg["emb_dim"])
         self.pos_emb = nn.Embedding(cfg["context_length"], cfg["emb_dim"])
-        self.drop_emb = nn.Dropout(cfg["drop_rate"])
+        self.drop_emb = nn.Dropout(cfg["emb_drop_rate"])
         self.trf_blocks = nn.Sequential(*[DummyTransformerBlock(cfg) for _ in range(cfg["n_layers"])]) 
         self.final_norm = DummyLayerNorm(cfg["emb_dim"]) #B
         self.out_head = nn.Linear(
@@ -801,13 +803,13 @@ class TransformerBlock(nn.Module):
         d_out=cfg["emb_dim"],
         context_length=cfg["context_length"],
         num_heads=cfg["n_heads"],
-        dropout=cfg["drop_rate"],
+        dropout=cfg["multi_drop_rate"],
         qkv_bias=cfg["qkv_bias"])
         # layers normalized then dropout applied
         self.ff = FeedForward(cfg)
         self.norm1 = LayerNorm(cfg["emb_dim"])
         self.norm2 = LayerNorm(cfg["emb_dim"])
-        self.drop_resid = nn.Dropout(cfg["drop_rate"])
+        self.drop_resid = nn.Dropout(cfg["short_drop_rate"])
     def forward(self, x):
         #A
         shortcut = x
@@ -835,7 +837,7 @@ class GPTModel(nn.Module):
         super().__init__()
         self.tok_emb = nn.Embedding(cfg["vocab_size"], cfg["emb_dim"])
         self.pos_emb = nn.Embedding(cfg["context_length"], cfg["emb_dim"])
-        self.drop_emb = nn.Dropout(cfg["drop_rate"])
+        self.drop_emb = nn.Dropout(cfg["emb_drop_rate"])
         self.trf_blocks = nn.Sequential(
         *[TransformerBlock(cfg) for _ in range(cfg["n_layers"])])
         self.final_norm = LayerNorm(cfg["emb_dim"])
@@ -872,7 +874,7 @@ total_params_gpt2 = total_params - sum(p.numel() for p in model.out_head.paramet
 # compute the memory requirements of the 163 million parameters 
 total_size_bytes = total_params * 4 #A
 total_size_mb = total_size_bytes / (1024 * 1024) #B
-print(f"Total size of the model: {total_size_mb:.2f} MB")
+# print(f"Total size of the model: {total_size_mb:.2f} MB")
 
 '''
 # Initializing larger GPT models
@@ -892,7 +894,9 @@ GPT_CONFIG_MED = {
 "emb_dim": 1024, # Embedding dimension
 "n_heads": 16, # Number of attention heads
 "n_layers": 24, # Number of layers
-"drop_rate": 0.1, # Dropout rate
+"emb_drop_rate": 0.1, # Embedding dropout rate
+"short_drop_rate": 0.15, # Shortcut dropout rate
+"multi_drop_rate": 0.175, # Multi-Head attention dropout rate
 "qkv_bias": False # Query-Key-Value bias
 }
 
@@ -903,7 +907,9 @@ GPT_CONFIG_LARGE = {
 "emb_dim": 1280, # Embedding dimension
 "n_heads": 20, # Number of attention heads
 "n_layers": 36, # Number of layers
-"drop_rate": 0.1, # Dropout rate
+"emb_drop_rate": 0.1, # Embedding dropout rate
+"short_drop_rate": 0.15, # Shortcut dropout rate
+"multi_drop_rate": 0.175, # Multi-Head attention dropout rate
 "qkv_bias": False # Query-Key-Value bias
 }
 
@@ -914,7 +920,9 @@ GPT_CONFIG_XL = {
 "emb_dim": 1600, # Embedding dimension
 "n_heads": 25, # Number of attention heads
 "n_layers": 48, # Number of layers
-"drop_rate": 0.1, # Dropout rate
+"emb_drop_rate": 0.1, # Embedding dropout rate
+"short_drop_rate": 0.15, # Shortcut dropout rate
+"multi_drop_rate": 0.175, # Multi-Head attention dropout rate
 "qkv_bias": False # Query-Key-Value bias
 }
 
@@ -992,14 +1000,154 @@ def generate_text_simple(model, idx, max_new_tokens, context_size):
 # sample generation
 start_context = "Hello, I am"
 encoded = tokenizer.encode(start_context)
-print("encoded:", encoded)
+# print("encoded:", encoded)
 encoded_tensor = torch.tensor(encoded).unsqueeze(0) #A
-print("encoded_tensor.shape:", encoded_tensor.shape)
+# print("encoded_tensor.shape:", encoded_tensor.shape)
 
 model.eval() #A
 out = generate_text_simple(model=model, idx=encoded_tensor, max_new_tokens=6, context_size=GPT_CONFIG_124M["context_length"])
-print("Output:", out)
-print("Output length:", len(out[0]))
+# print("Output:", out)
+# print("Output length:", len(out[0]))
 
 decoded_text = tokenizer.decode(out.squeeze(0).tolist())
-print(decoded_text)
+# print(decoded_text)
+
+# Pretraining on Unlabeled Data
+
+GPT_CONFIG_124M = {
+"vocab_size": 50257,
+"context_length": 256, #A
+"emb_dim": 768,
+"n_heads": 12,
+"n_layers": 12,
+"emb_drop_rate": 0.1, #B
+"short_drop_rate": 0.1, #B
+"multi_drop_rate": 0.1, #B
+"drop_rate": 0.1, #B
+"qkv_bias": False
+}
+torch.manual_seed(123)
+model = GPTModel(GPT_CONFIG_124M)
+model.eval()
+
+# text to token id conversion
+def text_to_token_ids(text, tokenizer):
+    encoded = tokenizer.encode(text, allowed_special={'<|endoftext|>'})
+    encoded_tensor = torch.tensor(encoded).unsqueeze(0) # add batch dimension
+    return encoded_tensor
+def token_ids_to_text(token_ids, tokenizer):
+    flat = token_ids.squeeze(0) # remove batch dimension
+    return tokenizer.decode(flat.tolist())
+start_context = "Every effort moves you"
+tokenizer = tiktoken.get_encoding("gpt2")
+token_ids = generate_text_simple(model=model, idx=text_to_token_ids(start_context, tokenizer), max_new_tokens=10, context_size=GPT_CONFIG_124M["context_length"])
+# print("Output text:\n", token_ids_to_text(token_ids, tokenizer))
+
+# Calculating the text generation loss
+inputs = torch.tensor(
+[[16833, 3626, 6100], # ["every effort moves",
+[40, 1107, 588]]) # "I really like"]
+
+targets = torch.tensor(
+[[3626, 6100, 345 ], # [" effort moves you",
+[588, 428, 11311]]) # " really like chocolate"]
+
+with torch.no_grad(): #A
+    logits = model(inputs)
+probas = torch.softmax(logits, dim=-1) # Probability of each token in vocabprint(probas.shape)
+# print(probas.shape) # 2x3x50257 = batch size x tokens per input/batch x vocab size
+
+token_ids = torch.argmax(probas, dim=-1, keepdim=True)
+# print("Token IDs:\n", token_ids)
+
+# print(f"Targets batch 1: {token_ids_to_text(targets[0], tokenizer)}")
+# print(f"Outputs batch 1: {token_ids_to_text(token_ids[0].flatten(), tokenizer)}")
+
+# implement the text evaluation function
+
+text_idx = 0
+target_probas_1 = probas[text_idx, [0, 1, 2], targets[text_idx]]
+# print("Text 1:", target_probas_1)
+text_idx = 1
+target_probas_2 = probas[text_idx, [0, 1, 2], targets[text_idx]]
+# print("Text 2:", target_probas_2)
+
+log_probas = torch.log(torch.cat((target_probas_1, target_probas_2)))
+# print(log_probas)
+
+avg_log_probas = torch.mean(log_probas)
+# print(avg_log_probas)
+
+neg_avg_log_probas = avg_log_probas * -1
+# print(neg_avg_log_probas)
+
+logits_flat = logits.flatten(0, 1)
+targets_flat = targets.flatten()
+# print("Flattened logits:", logits_flat.shape)
+# print("Flattened targets:", targets_flat.shape)
+
+loss = torch.nn.functional.cross_entropy(logits_flat, targets_flat)
+# print(loss)
+
+perplexity = torch.exp(loss)
+
+# Calculating the training and validation set losses
+file_path = "the-verdict.txt"
+with open(file_path, "r", encoding="utf-8") as file:
+    text_data = file.read()
+
+total_characters = len(text_data)
+total_tokens = len(tokenizer.encode(text_data))
+# print("Characters:", total_characters)
+# print("Tokens:", total_tokens)
+
+train_ratio = 0.90
+split_idx = int(train_ratio * len(text_data))
+train_data = text_data[:split_idx]
+val_data = text_data[split_idx:]
+
+torch.manual_seed(123)
+train_loader = create_dataloader_v1(
+    train_data,
+    batch_size=2,
+    max_length=GPT_CONFIG_124M["context_length"],
+    stride=GPT_CONFIG_124M["context_length"],
+    drop_last=True,
+    shuffle=True
+)
+val_loader = create_dataloader_v1(
+    val_data,
+    batch_size=2,
+    max_length=GPT_CONFIG_124M["context_length"],
+    stride=GPT_CONFIG_124M["context_length"],
+    drop_last=False,
+    shuffle=False
+)
+
+def calc_loss_batch(input_batch, target_batch, model, device):
+    input_batch, target_batch = input_batch.to(device), target_batch.to(device)
+    logits = model(input_batch)
+    loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), target_batch.flatten())
+    return loss
+
+def calc_loss_loader(data_loader, model, device, num_batches=None):
+    total_loss = 0.
+    if num_batches is None:
+        num_batches = len(data_loader) #A
+    else:
+        num_batches = min(num_batches, len(data_loader)) #B
+    for i, (input_batch, target_batch) in enumerate(data_loader):
+        if i < num_batches:
+            loss = calc_loss_batch(input_batch, target_batch, model, device)
+            total_loss += loss.item() #C
+        else:
+            break
+    return total_loss / num_batches #D
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu") #A
+model.to(device)
+print("device:",device)
+train_loss = calc_loss_loader(train_loader, model, device) #B
+val_loss = calc_loss_loader(val_loader, model, device)
+print("Training loss:", train_loss)
+print("Validation loss:", val_loss)
